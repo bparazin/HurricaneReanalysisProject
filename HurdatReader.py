@@ -1,8 +1,16 @@
 import pandas as pd
 import datetime as dt
+import numpy as np
     
 def cleanInputLine(line):
     return [entry.strip() for entry in line.split(',')]
+
+#Some longitudes are reported as degrees West, even if they are east of prime merdiain which is an odd choice, this fixes this up to be (-180, 180]
+def handleLon(lon):
+    val = float(lon[:-1]) * -1 if lon[-1]=='W' else float(lon[:-1])
+    if val < -180:
+        val += 360
+    return val
 
 def readStorm(idcode, name, lines):
     entry_list = pd.DataFrame([cleanInputLine(line) for line in lines])
@@ -15,7 +23,7 @@ def readStorm(idcode, name, lines):
     resultData['record identifier'] = entry_list[2]
     resultData['system status'] = entry_list[3]
     resultData['lat'] = [float(coord[:-1]) * -1 if coord[-1]=='S' else float(coord[:-1]) for coord in entry_list[4]]
-    resultData['lon'] = [float(coord[:-1]) * -1 if coord[-1]=='W' else float(coord[:-1]) for coord in entry_list[5]]
+    resultData['lon'] = [handleLon(coord) for coord in entry_list[5]]
     resultData['Max sustained wind (knots)'] = [float(val) if val!='-999' else None for val in entry_list[6]]
     resultData['Minimum Pressure (millibars)'] = [float(val) if val!='-999' else None for val in entry_list[7]]
     #all max wind extents are given as (NE, SE, SW, NW)
@@ -46,6 +54,31 @@ def readHurdat(path, line = 0):
     hurdat_final = {}
     while line < len(hurdat_raw):
         header = cleanInputLine(hurdat_raw[line])
-        hurdat_final[header[0]] = readStorm(header[0], header[1], hurdat_raw[line+1:line+1+int(header[2])])['data']
+        hurdat_final[header[0]] = readStorm(header[0], header[1], hurdat_raw[line+1:line+1+int(header[2])])
         line += 1 + int(header[2])
     return hurdat_final
+
+#All bounds are [min, max), and if the storm passes through the bounding box/timebox in at least 1 datapoint, it is included
+#Min and max bounds for latlon come from globe geometery, min time is 1700, since Hurdat like won't go back that far as it is before the United States, and max 
+#time is now since you can't see the future
+#Time bounds should be datetime objects, lat and lon should be floats in the range [-180, 180] for lon and [-90, 90] for lat
+#If makesLandfall is True, it also restricts it to only hurricanes that make landfall
+def trimHurdat(hurdat, 
+               lonMin = -180, lonMax = 180, 
+               latMin = -90, latMax = 91, 
+               timeMin = dt.datetime(1700, 1, 1, tzinfo = dt.timezone.utc), timeMax = dt.datetime.now(dt.timezone.utc),
+              makesLandfall = False):
+    trimmedHurdat = {}
+    for key in hurdat:
+        inBounds = False
+        makesLandfallIndividual = not makesLandfall
+        for identifier in hurdat[key]['data']['record identifier']:
+            if identifier == 'L':
+                makesLandfallIndividual = True #doing this instead of 'L' in hurdat[key]['record identifier'] because it doesn't set to false
+        for lon, lat, time in zip(hurdat[key]['data']['lon'], hurdat[key]['data']['lat'], hurdat[key]['data']['datetime']):
+            if lon < lonMax and lon >= lonMin and lat >= latMin and lat < latMax and time < timeMax and time >= timeMin:
+                inBounds = True and makesLandfallIndividual
+                break
+        if inBounds:
+            trimmedHurdat[key] = hurdat[key]
+    return trimmedHurdat
