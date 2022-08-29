@@ -25,6 +25,24 @@ def readStorm(idcode, name, lines):
     resultData['lat'] = [float(coord[:-1]) * -1 if coord[-1]=='S' else float(coord[:-1]) for coord in entry_list[4]]
     resultData['lon'] = [handleLon(coord) for coord in entry_list[5]]
     resultData['Max sustained wind (knots)'] = [float(val) if val!='-999' else None for val in entry_list[6]]
+    statusWithSpeed = []
+    for i, maxSpeed in enumerate(resultData['Max sustained wind (knots)']):
+        #classify hurricanes by windspeed
+        if maxSpeed >= 137 and resultData['system status'][i] == 'HU':
+            statusWithSpeed.append('HU5')
+        elif maxSpeed >= 113 and resultData['system status'][i] == 'HU':
+            statusWithSpeed.append('HU4')
+        elif maxSpeed >= 96 and resultData['system status'][i] == 'HU':
+            statusWithSpeed.append('HU3')
+        elif maxSpeed >= 83 and resultData['system status'][i] == 'HU':
+            statusWithSpeed.append('HU2')
+        elif maxSpeed >= 64 and resultData['system status'][i] == 'HU':
+            statusWithSpeed.append('HU1')
+        elif resultData['system status'][i] == 'HU':
+            statusWithSpeed.append('HUU')
+        else:
+            statusWithSpeed.append(resultData['system status'][i])
+    resultData['system status'] = statusWithSpeed
     resultData['Minimum Pressure (millibars)'] = [float(val) if val!='-999' else None for val in entry_list[7]]
     #all max wind extents are given as (NE, SE, SW, NW)
     resultData['34 knot wind radii max extent (NM)'] = [(float(val1) if val1!='-999' else None, 
