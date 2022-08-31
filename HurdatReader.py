@@ -84,19 +84,11 @@ def readHurdat(path, line = 0):
 def trimHurdat(hurdat, 
                lonMin = -180, lonMax = 180, 
                latMin = -90, latMax = 91, 
-               timeMin = dt.datetime(1700, 1, 1, tzinfo = dt.timezone.utc), timeMax = dt.datetime.now(dt.timezone.utc),
-              makesLandfall = False):
+               timeMin = dt.datetime(1700, 1, 1, tzinfo = dt.timezone.utc), timeMax = dt.datetime.now(dt.timezone.utc)):
     trimmedHurdat = {}
     for key in hurdat:
-        inBounds = False
-        makesLandfallIndividual = not makesLandfall
-        for identifier in hurdat[key]['data']['record identifier']:
-            if identifier == 'L':
-                makesLandfallIndividual = True #doing this instead of 'L' in hurdat[key]['record identifier'] because it doesn't set to false
         for lon, lat, time in zip(hurdat[key]['data']['lon'], hurdat[key]['data']['lat'], hurdat[key]['data']['datetime']):
-            if lon < lonMax and lon >= lonMin and lat >= latMin and lat < latMax and time < timeMax and time >= timeMin:
-                inBounds = True and makesLandfallIndividual
+            if lon <= lonMax and lon >= lonMin and lat >= latMin and lat <= latMax and time <= timeMax and time >= timeMin:
+                trimmedHurdat[key] = hurdat[key]
                 break
-        if inBounds:
-            trimmedHurdat[key] = hurdat[key]
     return trimmedHurdat

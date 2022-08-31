@@ -4,8 +4,6 @@ from matplotlib.patches import Ellipse
 import cartopy.crs as ccrs
 from geopy import distance
 import scipy.stats as st
-hurdat = readHurdat('Data/Hurdat.txt')
-BOXhurdat = trimHurdat(hurdat, latMin = 40, lonMax = -70, timeMin = dt.datetime(1700, 1, 1, tzinfo = dt.timezone.utc))
 
 def plotStorm(lonlist, latlist, ax):
     ax.plot(lonlist, latlist, transform=ccrs.Geodetic(), alpha = 0.3)
@@ -53,17 +51,14 @@ def getSynopticBounds(storm, datetime):
         if datetime > storm['data']['datetime'][i] and datetime < storm['data']['datetime'][i + 1]:
             return i, i+1
         
-#This looks at the status of the storm at the point nearest to the given lonlat
-def statusNearLocation(storm, lon_site, lat_site):
-    #the smallest great circle distance of 2 points on a globe is 20037.5 km, so setting it to start at 25000km is an easy way to prime it
-    min_dist = 25000
-    status_final = None
-    for lon, lat, status in zip(storm['data']['lon'], storm['data']['lat'], storm['data']['system status']):
-        if distance.distance((lat_site, lon_site), (lat, lon)) < min_dist:
-            min_dist = distance.distance((lat_site, lon_site), (lat, lon))
-            status_final = status
-            
-    return status_final
+#This looks at the status of the storm at the first point it enters a lonlat bounding box, returns None if the path never crosses through that box
+def statusNearLocation(storm, lon_min=-180, lon_max=180, lat_min=-90, lat_max=90, returnTime = False):
+    for i, (lon, lat) in enumerate(zip(storm['data']['lon'], storm['data']['lat'])):
+        if lon >= lon_min and lon <= lon_max and lat >= lat_min and lat <= lat_max:
+            if not returnTime:
+                return storm['data']['system status'][i]
+            else:
+                return storm['data']['system status'][i], storm['data']['datetime'][i]
 
 def lonLatToXYZ(lon, lat):
     return (np.cos(np.pi / 180 * lon) * np.cos(np.pi / 180 * lat), 
@@ -132,18 +127,15 @@ def plotTMinusPosition(hurdat, tMinus, stormType, lon_min=-180, lon_max=180, lat
     ax.set_extent(bounds, crs=ccrs.Geodetic())
     #ax.set_global()
 
-
-
-    position_list = []
     lon_list = []
     lat_list = []
     storm_list = []
+    status_list = []
     
     for key in hurdat:
         position = positionBeforeArrival(hurdat[key], tMinus, lon_min, lon_max, lat_min, lat_max)
 
         if position is not None:
-            position_list.append(position[0])
             lon_list.append(position[0][0])
             lat_list.append(position[0][1])
             storm_list.append(position[1])
@@ -152,7 +144,7 @@ def plotTMinusPosition(hurdat, tMinus, stormType, lon_min=-180, lon_max=180, lat
     lat_plot = []
     
     for i, (sLon, sLat, storm) in enumerate(zip(lon_list, lat_list, storm_list)):
-        if statusNearLocation(storm, lon_min, lat_min) in stormType:
+        if statusNearLocation(storm, lon_min, lon_max, lat_min, lat_max) in stormType:
             ax.plot(sLon, sLat, 'o', transform=ccrs.Geodetic(), alpha = storm_alpha)
             lon_plot.append(sLon)
             lat_plot.append(sLat)
@@ -184,20 +176,15 @@ def plotTMinusPosition(hurdat, tMinus, stormType, lon_min=-180, lon_max=180, lat
     ax.add_patch(Ellipse(mean, S1width, S1height, transform=ccrs.Geodetic(), 
                          angle=S1rotation, facecolor='White', edgecolor='green', label = '1 sigma interval'))
     
-    
-    ax.legend()
-    
     ax.plot([lon_min, lon_max], [lat_min, lat_min], transform=ccrs.PlateCarree(), color = 'pink')
     ax.plot([lon_min, lon_max], [lat_max, lat_max], transform=ccrs.PlateCarree(), color = 'pink')
     ax.plot([lon_max, lon_max], [lat_min, lat_max], transform=ccrs.PlateCarree(), color = 'pink')
-    ax.plot([lon_min, lon_min], [lat_min, lat_max], transform=ccrs.PlateCarree(), color = 'pink')
-              
+    ax.plot([lon_min, lon_min], [lat_min, lat_max], transform=ccrs.PlateCarree(), color = 'pink', label = 'Bounding Box')
+        
+    ax.legend()
+        
     ax.plot(*mean, '+', transform=ccrs.PlateCarree(), color = 'black')
-
-    ax.set_title(f'Storm position {tMinus} hours before entering the bounding box')
 
     print(f'{len(lonLatList)} storms plotted')
     
     plt.show()
-
-plotTMinusPosition(hurdat, 120, ['TD', 'HU', 'TS', 'SS', 'EX'], lon_min=-74, lon_max=-70, lat_min=41.25, lat_max=44)
