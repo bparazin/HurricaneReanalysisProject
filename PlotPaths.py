@@ -4,9 +4,6 @@ from matplotlib.patches import Ellipse
 import cartopy.crs as ccrs
 from geopy import distance
 import scipy.stats as st
-
-def plotStorm(lonlist, latlist, ax):
-    ax.plot(lonlist, latlist, transform=ccrs.Geodetic(), alpha = 0.3)
     
 def positionBeforeArrival(storm, tMinusTime, lon_min, lon_max, lat_min, lat_max):
     if type(tMinusTime) == int or type(tMinusTime) == float:
@@ -116,7 +113,7 @@ def cov_ellipse(cov, q=None, nsig=None, **kwargs):
 
 #potential todo: use a kent distribution rather than what I'm doing now
 
-def plotTMinusPosition(hurdat, tMinus, stormType, lon_min=-180, lon_max=180, lat_min=-90, lat_max=90, storm_alpha=0.5, bounds = None):
+def plotTMinusPosition(hurdat, tMinus, stormType, lon_min=-180, lon_max=180, lat_min=-90, lat_max=90, storm_alpha=0.5, bounds = None, saveFig = None):
     fig = plt.figure(figsize=(20, 10))
     ax = fig.add_subplot(1, 1, 1, projection=ccrs.PlateCarree())
 
@@ -186,5 +183,8 @@ def plotTMinusPosition(hurdat, tMinus, stormType, lon_min=-180, lon_max=180, lat
     ax.plot(*mean, '+', transform=ccrs.PlateCarree(), color = 'black')
 
     print(f'{len(lonLatList)} storms plotted')
+    
+    if saveFig is not None:
+        plt.savefig(saveFig)    
     
     plt.show()
