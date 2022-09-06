@@ -7,6 +7,8 @@ import scipy.stats as st
 
 
 def positionBeforeArrival(storm, tMinusTime, lon_min, lon_max, lat_min, lat_max):
+    SECONDS_PER_HOUR = 3600
+
     if type(tMinusTime) == int or type(tMinusTime) == float:
         tMinusTime = dt.timedelta(hours=-tMinusTime)
 
@@ -17,27 +19,48 @@ def positionBeforeArrival(storm, tMinusTime, lon_min, lon_max, lat_min, lat_max)
             break
 
     if keyTime is None:  # this means it doesn't enter our bounding box and can't be plotted
-        return
+        return None, None
 
     bounds = getSynopticBounds(storm, keyTime)
 
     if bounds is None:  # this means we are too early/late in data and it can't be plotted
-        return
+        return None, None
 
     if type(bounds) == int:
-        return (storm['data']['lon'][bounds], storm['data']['lat'][bounds]), storm
+
+        if bounds != len(storm['data']['lat']) - 1:
+
+            velocity = (distance.distance((storm['data']['lat'][bounds], storm['data']['lon'][bounds]),
+                                          (storm['data']['lat'][bounds + 1], storm['data']['lon'][bounds + 1])).km /
+                        (storm['data']['datetime'][bounds + 1] - storm['data']['datetime'][
+                            bounds]).total_seconds()) * SECONDS_PER_HOUR
+
+            bearing = twoPointBearing(storm['data']['lon'][bounds], storm['data']['lat'][bounds],
+                                      storm['data']['lon'][bounds + 1], storm['data']['lat'][bounds + 1])
+        else:
+            velocity = (distance.distance((storm['data']['lat'][bounds - 1], storm['data']['lon'][bounds - 1]),
+                                          (storm['data']['lat'][bounds], storm['data']['lon'][bounds])).km /
+                        (storm['data']['datetime'][bounds] - storm['data']['datetime'][
+                            bounds - 1]).total_seconds()) * SECONDS_PER_HOUR
+
+            bearing = twoPointBearing(storm['data']['lon'][bounds - 1], storm['data']['lat'][bounds - 1],
+                                      storm['data']['lon'][bounds], storm['data']['lat'][bounds])
+
+        return ((storm['data']['lon'][bounds], storm['data']['lat'][bounds]), storm), (velocity, bearing)
     else:
         # god i hate spherical coordinates
         velocity = (distance.distance((storm['data']['lat'][bounds[0]], storm['data']['lon'][bounds[0]]),
                                       (storm['data']['lat'][bounds[1]], storm['data']['lon'][bounds[1]])).km /
-                    (storm['data']['datetime'][bounds[1]] - storm['data']['datetime'][bounds[0]]).total_seconds())
-        time = (keyTime - storm['data']['datetime'][bounds[0]]).total_seconds()
+                    (storm['data']['datetime'][bounds[1]] - storm['data']['datetime'][
+                        bounds[0]]).total_seconds()) * SECONDS_PER_HOUR
+        time = (keyTime - storm['data']['datetime'][bounds[0]]).total_seconds() / SECONDS_PER_HOUR
         stormDistance = velocity * time
+        bearing = twoPointBearing(storm['data']['lon'][bounds[0]], storm['data']['lat'][bounds[0]],
+                                  storm['data']['lon'][bounds[1]], storm['data']['lat'][bounds[1]])
         dest = distance.distance(kilometers=stormDistance).destination(
             (storm['data']['lat'][bounds[0]], storm['data']['lon'][bounds[0]]),
-            bearing=twoPointBearing(storm['data']['lon'][bounds[0]], storm['data']['lat'][bounds[0]],
-                                    storm['data']['lon'][bounds[1]], storm['data']['lat'][bounds[1]]))
-        return (dest.longitude, dest.latitude), storm
+            bearing=bearing)
+        return ((dest.longitude, dest.latitude), storm), (velocity, bearing)
 
 
 # This gets the index or two indicies of the 2 hurricane observation steps bounding a given datetime
@@ -124,6 +147,8 @@ def cov_ellipse(cov, q=None, nsig=None, **kwargs):
 
 def plotTMinusPosition(hurdat, tMinus, stormType, lon_min=-180, lon_max=180, lat_min=-90, lat_max=90, storm_alpha=0.5,
                        bounds=None, saveFig=None):
+    KM_TO_MILES = 0.621371
+
     fig = plt.figure(figsize=(20, 10))
     ax = fig.add_subplot(1, 1, 1, projection=ccrs.PlateCarree())
 
@@ -138,58 +163,65 @@ def plotTMinusPosition(hurdat, tMinus, stormType, lon_min=-180, lon_max=180, lat
     lat_list = []
     storm_list = []
     status_list = []
+    velocity_list = []
+    bearing_list = []
 
     for key in hurdat:
-        position = positionBeforeArrival(hurdat[key], tMinus, lon_min, lon_max, lat_min, lat_max)
+        position, velocity = positionBeforeArrival(hurdat[key], tMinus, lon_min, lon_max, lat_min, lat_max)
 
         if position is not None:
             lon_list.append(position[0][0])
             lat_list.append(position[0][1])
             storm_list.append(position[1])
+        if velocity is not None:
+            velocity_list.append(velocity[0])
+            bearing_list.append(velocity[1])
 
     lon_plot = []
     lat_plot = []
+    v_plot = []
 
     for i, (sLon, sLat, storm) in enumerate(zip(lon_list, lat_list, storm_list)):
         if statusNearLocation(storm, lon_min, lon_max, lat_min, lat_max) in stormType:
             ax.plot(sLon, sLat, 'o', transform=ccrs.Geodetic(), alpha=storm_alpha)
             lon_plot.append(sLon)
             lat_plot.append(sLat)
+            v_plot.append(velocity_list[i])
 
     lonLatList = np.stack([lon_plot, lat_plot], axis=1)
 
-    mean = np.mean(lonLatList, axis=0)
-    cov = np.cov(lonLatList, rowvar=0)
-    mvNorm = st.multivariate_normal(mean, cov=cov)
+    if len(lonLatList) > 2:
+        mean = np.mean(lonLatList, axis=0)
+        cov = np.cov(lonLatList, rowvar=0)
+        mvNorm = st.multivariate_normal(mean, cov=cov)
 
-    STEP = 0.1
-    gridX = np.arange(bounds[0], bounds[1], STEP)
-    gridY = np.arange(bounds[2], bounds[3], STEP)
-    meshX, meshY = np.meshgrid(gridX, gridY)
-    pos = np.dstack([meshX, meshY])
+        S3width, S3height, S3rotation = cov_ellipse(cov, nsig=3)
+        ax.add_patch(Ellipse(mean, S3width, S3height, transform=ccrs.Geodetic(),
+                             angle=S3rotation, facecolor='White', edgecolor='red', label='3 sigma interval'))
 
-    # ax.contourf(meshX, meshY, mvNorm.pdf(pos), transform=ccrs.PlateCarree(), levels = 10)
+        S2width, S2height, S2rotation = cov_ellipse(cov, nsig=2)
+        ax.add_patch(Ellipse(mean, S2width, S2height, transform=ccrs.Geodetic(),
+                             angle=S2rotation, facecolor='White', edgecolor='blue', label='2 sigma interval'))
 
-    S3width, S3height, S3rotation = cov_ellipse(cov, nsig=3)
-    ax.add_patch(Ellipse(mean, S3width, S3height, transform=ccrs.Geodetic(),
-                         angle=S3rotation, facecolor='White', edgecolor='red', label='3 sigma interval'))
+        S1width, S1height, S1rotation = cov_ellipse(cov, nsig=1)
+        ax.add_patch(Ellipse(mean, S1width, S1height, transform=ccrs.Geodetic(),
+                             angle=S1rotation, facecolor='White', edgecolor='green', label='1 sigma interval'))
 
-    S2width, S2height, S2rotation = cov_ellipse(cov, nsig=2)
-    ax.add_patch(Ellipse(mean, S2width, S2height, transform=ccrs.Geodetic(),
-                         angle=S2rotation, facecolor='White', edgecolor='blue', label='2 sigma interval'))
+        ax.plot([lon_min, lon_max], [lat_min, lat_min], transform=ccrs.PlateCarree(), color='pink')
+        ax.plot([lon_min, lon_max], [lat_max, lat_max], transform=ccrs.PlateCarree(), color='pink')
+        ax.plot([lon_max, lon_max], [lat_min, lat_max], transform=ccrs.PlateCarree(), color='pink')
+        ax.plot([lon_min, lon_min], [lat_min, lat_max], transform=ccrs.PlateCarree(), color='pink',
+                label='Bounding Box')
 
-    S1width, S1height, S1rotation = cov_ellipse(cov, nsig=1)
-    ax.add_patch(Ellipse(mean, S1width, S1height, transform=ccrs.Geodetic(),
-                         angle=S1rotation, facecolor='White', edgecolor='green', label='1 sigma interval'))
+        ax.legend()
 
-    ax.plot([lon_min, lon_max], [lat_min, lat_min], transform=ccrs.PlateCarree(), color='pink')
-    ax.plot([lon_min, lon_max], [lat_max, lat_max], transform=ccrs.PlateCarree(), color='pink')
-    ax.plot([lon_max, lon_max], [lat_min, lat_max], transform=ccrs.PlateCarree(), color='pink')
-    ax.plot([lon_min, lon_min], [lat_min, lat_max], transform=ccrs.PlateCarree(), color='pink', label='Bounding Box')
+        ax.plot(*mean, '+', transform=ccrs.PlateCarree(), color='black')
 
-    ax.legend()
+    ax.set_title(f'Position of systems {tMinus} hours before entering the bounding box')
 
-    ax.plot(*mean, '+', transform=ccrs.PlateCarree(), color='black')
+    plt.figtext(0.5, 0.08,
+                f'Mean Velocity of all storms plotted is {np.round(np.mean(v_plot) * KM_TO_MILES, 2)} miles/hr\nwith a standard deviation of {np.round(np.std(v_plot) * KM_TO_MILES, 2)} miles/hr',
+                wrap=True, horizontalalignment='center', fontsize=12)
 
     print(f'{len(lonLatList)} storms plotted')
 

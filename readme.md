@@ -89,7 +89,10 @@ hours before entering it, along with a black cross at the mean position and 3 el
 confidence areas of where storms that enter that bounding box are found. This is calculated using a multivariate normal
 distribution, which assumes the points are distributed on a flat surface, rather than a spherical surface, meaning
 there is some error there, but we determined that the development cost of using a kent distribution was higher than the
-gain caused by the increased precision. 
+gain caused by the increased precision. The velocity data given at the bottom of the image is found by using the average
+velocity between the current storm position, and the position at the next observation unless the current storm position
+is the last one recorded, in which case it is the average velocity the storm sustained between the previous and current
+positions.
 
 ### Bar Chart
 
