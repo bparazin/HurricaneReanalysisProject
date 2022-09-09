@@ -30,7 +30,7 @@ def readStorm(idcode, name, lines):
     resultData['system status'] = entry_list[3]
     resultData['lat'] = [float(coord[:-1]) * -1 if coord[-1] == 'S' else float(coord[:-1]) for coord in entry_list[4]]
     resultData['lon'] = [handleLon(coord) for coord in entry_list[5]]
-    resultData['Max sustained wind (knots)'] = [float(val) if val != '-999' else None for val in entry_list[6]]
+    resultData['Max sustained wind (knots)'] = [float(val) if val != '-999' else np.nan for val in entry_list[6]]
     statusWithSpeed = []
     for i, maxSpeed in enumerate(resultData['Max sustained wind (knots)']):
         # classify hurricanes by windspeed
@@ -49,30 +49,30 @@ def readStorm(idcode, name, lines):
         else:
             statusWithSpeed.append(resultData['system status'][i])
     resultData['system status'] = statusWithSpeed
-    resultData['Minimum Pressure (millibars)'] = [float(val) if val != '-999' else None for val in entry_list[7]]
+    resultData['Minimum Pressure (millibars)'] = [float(val) if val != '-999' else np.nan for val in entry_list[7]]
     # all max wind extents are given as (NE, SE, SW, NW)
-    resultData['34 knot wind radii max extent (NM)'] = [(float(val1) if val1 != '-999' else None,
-                                                         float(val2) if val2 != '-999' else None,
-                                                         float(val3) if val3 != '-999' else None,
-                                                         float(val4) if val4 != '-999' else None)
+    resultData['34 knot wind radii max extent (NM)'] = [np.asarray((float(val1) if val1 != '-999' else np.nan,
+                                                         float(val2) if val2 != '-999' else np.nan,
+                                                         float(val3) if val3 != '-999' else np.nan,
+                                                         float(val4) if val4 != '-999' else np.nan))
                                                         for val1, val2, val3, val4 in
                                                         zip(entry_list[8], entry_list[9], entry_list[10],
                                                             entry_list[11])]
-    resultData['50 knot wind radii max extent (NM)'] = [(float(val1) if val1 != '-999' else None,
-                                                         float(val2) if val2 != '-999' else None,
-                                                         float(val3) if val3 != '-999' else None,
-                                                         float(val4) if val4 != '-999' else None)
+    resultData['50 knot wind radii max extent (NM)'] = [np.asarray((float(val1) if val1 != '-999' else np.nan,
+                                                         float(val2) if val2 != '-999' else np.nan,
+                                                         float(val3) if val3 != '-999' else np.nan,
+                                                         float(val4) if val4 != '-999' else np.nan))
                                                         for val1, val2, val3, val4 in
                                                         zip(entry_list[12], entry_list[13], entry_list[14],
                                                             entry_list[15])]
-    resultData['64 knot wind radii max extent (NM)'] = [(float(val1) if val1 != '-999' else None,
-                                                         float(val2) if val2 != '-999' else None,
-                                                         float(val3) if val3 != '-999' else None,
-                                                         float(val4) if val4 != '-999' else None)
+    resultData['64 knot wind radii max extent (NM)'] = [np.asarray((float(val1) if val1 != '-999' else np.nan,
+                                                         float(val2) if val2 != '-999' else np.nan,
+                                                         float(val3) if val3 != '-999' else np.nan,
+                                                         float(val4) if val4 != '-999' else np.nan))
                                                         for val1, val2, val3, val4 in
                                                         zip(entry_list[16], entry_list[17], entry_list[18],
                                                             entry_list[19])]
-    resultData['max wind radius (NM)'] = [val if val != '-999' else None for val in entry_list[20]]
+    resultData['max wind radius (NM)'] = [float(val) if val != '-999' else np.nan for val in entry_list[20]]
     result['data'] = resultData
     return result
 

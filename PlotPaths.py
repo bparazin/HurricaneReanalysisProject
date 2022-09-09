@@ -4,10 +4,11 @@ from matplotlib.patches import Ellipse
 import cartopy.crs as ccrs
 from geopy import distance
 import scipy.stats as st
+import datetime as dt
+SECONDS_PER_HOUR = 3600
 
 
-def positionBeforeArrival(storm, tMinusTime, lon_min, lon_max, lat_min, lat_max):
-    SECONDS_PER_HOUR = 3600
+def positionBeforeArrival(storm, tMinusTime, lon_min, lon_max, lat_min, lat_max, category_statistics=False):
 
     if type(tMinusTime) == int or type(tMinusTime) == float:
         tMinusTime = dt.timedelta(hours=-tMinusTime)
@@ -46,7 +47,13 @@ def positionBeforeArrival(storm, tMinusTime, lon_min, lon_max, lat_min, lat_max)
             bearing = twoPointBearing(storm['data']['lon'][bounds - 1], storm['data']['lat'][bounds - 1],
                                       storm['data']['lon'][bounds], storm['data']['lat'][bounds])
 
-        return ((storm['data']['lon'][bounds], storm['data']['lat'][bounds]), storm), (velocity, bearing)
+        if not category_statistics:
+            return ((storm['data']['lon'][bounds], storm['data']['lat'][bounds]), storm), (velocity, bearing)
+        else:
+            location_row = storm['data'].iloc[bounds].copy()
+            location_row['system status'] = statusNearLocation(storm, lon_min, lon_max, lat_min, lat_max, returnTime=False)
+            
+            return location_row
     else:
         # god i hate spherical coordinates
         velocity = (distance.distance((storm['data']['lat'][bounds[0]], storm['data']['lon'][bounds[0]]),
@@ -60,7 +67,62 @@ def positionBeforeArrival(storm, tMinusTime, lon_min, lon_max, lat_min, lat_max)
         dest = distance.distance(kilometers=stormDistance).destination(
             (storm['data']['lat'][bounds[0]], storm['data']['lon'][bounds[0]]),
             bearing=bearing)
-        return ((dest.longitude, dest.latitude), storm), (velocity, bearing)
+        if not category_statistics:
+            return ((dest.longitude, dest.latitude), storm), (velocity, bearing)
+        else:
+            previous_entry = storm['data'].iloc[bounds[0]]
+            next_entry = storm['data'].iloc[bounds[1]]
+            intermediate_interp = intermediate_series(previous_entry, next_entry, keyTime - storm['data']['datetime'][bounds[0]])
+            intermediate_interp['system status'] = statusNearLocation(storm, lon_min, lon_max, lat_min, lat_max, returnTime=False)
+            return intermediate_interp
+        
+def intermediate_series(previous_entry, next_entry, time_gap):
+    intermediate_step = pd.Series(dtype = object)
+    intermediate_step['datetime'] = previous_entry['datetime'] + time_gap
+    intermediate_step['record identifier'] = None
+    velocity = (distance.distance((previous_entry['lat'], previous_entry['lon']),
+                                  (next_entry['lat'], next_entry['lon'])).km /
+                (next_entry['datetime'] - previous_entry['datetime']).total_seconds()) * SECONDS_PER_HOUR
+    time = (time_gap).total_seconds() / SECONDS_PER_HOUR
+    stormDistance = velocity * time
+    bearing = twoPointBearing(previous_entry['lon'], previous_entry['lat'],
+                              next_entry['lon'], next_entry['lat'])
+    dest = distance.distance(kilometers=stormDistance).destination(
+        (previous_entry['lat'], previous_entry['lon']),
+        bearing=bearing)
+    
+    time_between = (next_entry['datetime'] - previous_entry['datetime']).total_seconds() * SECONDS_PER_HOUR
+    
+    intermediate_step['lat'] = dest.latitude
+    intermediate_step['lon'] = dest.longitude
+    
+    intermediate_step['Max sustained wind (knots)'] = intermediate_observation(previous_entry['Max sustained wind (knots)'], 
+                                                                               next_entry['Max sustained wind (knots)'],
+                                                                               time_between,
+                                                                               time_gap.total_seconds() * SECONDS_PER_HOUR)
+    intermediate_step['34 knot wind radii max extent (NM)'] = intermediate_observation(previous_entry['34 knot wind radii max extent (NM)'], 
+                                                                                       next_entry['34 knot wind radii max extent (NM)'],
+                                                                                       time_between,
+                                                                                       time_gap.total_seconds() * SECONDS_PER_HOUR)
+    intermediate_step['50 knot wind radii max extent (NM)'] = intermediate_observation(previous_entry['50 knot wind radii max extent (NM)'], 
+                                                                                       next_entry['50 knot wind radii max extent (NM)'],
+                                                                                       time_between,
+                                                                                       time_gap.total_seconds() * SECONDS_PER_HOUR)
+    intermediate_step['64 knot wind radii max extent (NM)'] = intermediate_observation(previous_entry['64 knot wind radii max extent (NM)'], 
+                                                                                       next_entry['64 knot wind radii max extent (NM)'],
+                                                                                       time_between,
+                                                                                       time_gap.total_seconds() * SECONDS_PER_HOUR)
+    intermediate_step['max wind radius (NM)'] = intermediate_observation(previous_entry['max wind radius (NM)'], 
+                                                                         next_entry['max wind radius (NM)'],
+                                                                         time_between,
+                                                                         time_gap.total_seconds() * SECONDS_PER_HOUR)
+    return intermediate_step
+                                                                               
+    
+def intermediate_observation(previous_obs, next_obs, time_between, current_time):
+    slope = (next_obs - previous_obs) / time_between
+    return previous_obs + current_time * slope
+    
 
 
 # This gets the index or two indicies of the 2 hurricane observation steps bounding a given datetime
