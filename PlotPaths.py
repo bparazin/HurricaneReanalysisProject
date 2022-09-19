@@ -116,6 +116,11 @@ def intermediate_series(previous_entry, next_entry, time_gap):
                                                                          next_entry['max wind radius (NM)'],
                                                                          time_between,
                                                                          time_gap.total_seconds() * SECONDS_PER_HOUR)
+    intermediate_step['Average forward speed (mph)'] = intermediate_observation(previous_entry['Average forward speed (mph)'],
+                                                                                next_entry['Average forward speed (mph)'],
+                                                                                time_between,
+                                                                                time_gap.total_seconds() * SECONDS_PER_HOUR)
+    
     return intermediate_step
                                                                                
     

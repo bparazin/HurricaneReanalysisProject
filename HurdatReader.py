@@ -1,7 +1,7 @@
 import pandas as pd
 import datetime as dt
 import numpy as np
-
+from geopy import distance
 
 # most of these are a result of the hurdat format, linked in the readme
 def cleanInputLine(line):
@@ -30,6 +30,18 @@ def readStorm(idcode, name, lines):
     resultData['system status'] = entry_list[3]
     resultData['lat'] = [float(coord[:-1]) * -1 if coord[-1] == 'S' else float(coord[:-1]) for coord in entry_list[4]]
     resultData['lon'] = [handleLon(coord) for coord in entry_list[5]]
+    
+    travel_distance = [distance.distance((lat0, lon0), (lat1, lon1)).miles for lat0, lon0, lat1, lon1 in 
+                zip(resultData['lat'].iloc[:-1], resultData['lon'].iloc[:-1], resultData['lat'].iloc[1:], resultData['lon'].iloc[1:])]
+    time = [(time1 - time0)/dt.timedelta(hours=1) for time1, time0 
+                       in zip (resultData['datetime'].iloc[1:], resultData['datetime'].iloc[:-1])]
+    travel_distance.append(np.nan)
+    time.append(np.nan)
+    travel_distance = np.asarray(travel_distance)
+    time = np.asarray(time)
+    
+    resultData['Average forward speed (mph)'] = travel_distance / time
+    
     resultData['Max sustained wind (knots)'] = [float(val) if val != '-999' else np.nan for val in entry_list[6]]
     statusWithSpeed = []
     for i, maxSpeed in enumerate(resultData['Max sustained wind (knots)']):
@@ -46,6 +58,10 @@ def readStorm(idcode, name, lines):
             statusWithSpeed.append('HU1')
         elif resultData['system status'][i] == 'HU':
             statusWithSpeed.append('HUU')
+        elif maxSpeed >= 50 and resultData['system status'][i] == 'TS':
+            statusWithSpeed.append('TS+')
+        elif resultData['system status'][i] == 'TS':
+            statusWithSpeed.append('TS-')
         else:
             statusWithSpeed.append(resultData['system status'][i])
     resultData['system status'] = statusWithSpeed
