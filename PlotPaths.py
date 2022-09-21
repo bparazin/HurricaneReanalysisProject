@@ -212,11 +212,23 @@ def cov_ellipse(cov, q=None, nsig=None, **kwargs):
 
 # potential todo: use a kent distribution rather than what I'm doing now
 
-def plotTMinusPosition(hurdat, tMinus, stormType, lon_min=-180, lon_max=180, lat_min=-90, lat_max=90, storm_alpha=0.5,
-                       bounds=None, saveFig=None):
-    KM_TO_MILES = 0.621371
+#potential todo: use a kent distribution rather than what I'm doing now
 
-    fig = plt.figure(figsize=(20, 10))
+def plotTMinusPosition(hurdat, tMinus, stormType, lon_min=-180, lon_max=180, lat_min=-90, lat_max=90, storm_alpha=0.5, bounds = None, saveFig = None):
+    KM_TO_MILES = 0.621371
+    STATUS_COLORS = {'TD': 'red', 
+                     'HU1': 'blue',
+                     'HU2': 'green', 
+                     'HU3': 'orange', 
+                     'HU4': 'purple', 
+                     'HU5': 'darkred', 
+                     'HUU': 'lightcoral', 
+                     'TS+': 'darkolivegreen', 
+                     'TS-': 'darkslategray', 
+                     'SS': 'blueviolet', 
+                     'EX': 'mediumvioletred'}
+    
+    fig = plt.figure(figsize = (20,20))
     ax = fig.add_subplot(1, 1, 1, projection=ccrs.PlateCarree())
 
     ax.coastlines()
@@ -224,7 +236,7 @@ def plotTMinusPosition(hurdat, tMinus, stormType, lon_min=-180, lon_max=180, lat
         bounds = [-100, -30, 10, 90]
 
     ax.set_extent(bounds, crs=ccrs.Geodetic())
-    # ax.set_global()
+    #ax.set_global()
 
     lon_list = []
     lat_list = []
@@ -232,7 +244,8 @@ def plotTMinusPosition(hurdat, tMinus, stormType, lon_min=-180, lon_max=180, lat
     status_list = []
     velocity_list = []
     bearing_list = []
-
+    
+    
     for key in hurdat:
         position, velocity = positionBeforeArrival(hurdat[key], tMinus, lon_min, lon_max, lat_min, lat_max)
 
@@ -247,52 +260,78 @@ def plotTMinusPosition(hurdat, tMinus, stormType, lon_min=-180, lon_max=180, lat
     lon_plot = []
     lat_plot = []
     v_plot = []
-
+    
     for i, (sLon, sLat, storm) in enumerate(zip(lon_list, lat_list, storm_list)):
-        if statusNearLocation(storm, lon_min, lon_max, lat_min, lat_max) in stormType:
-            ax.plot(sLon, sLat, 'o', transform=ccrs.Geodetic(), alpha=storm_alpha)
+        stat_at_loc = statusNearLocation(storm, lon_min, lon_max, lat_min, lat_max)
+        if stat_at_loc in stormType:
+            ax.plot(sLon, sLat, 'o', transform=ccrs.Geodetic(), alpha = storm_alpha, color = STATUS_COLORS[stat_at_loc])
             lon_plot.append(sLon)
             lat_plot.append(sLat)
             v_plot.append(velocity_list[i])
-
-    lonLatList = np.stack([lon_plot, lat_plot], axis=1)
-
+            
+            
+    lonLatList = np.stack([lon_plot, lat_plot], axis = 1)
+    
     if len(lonLatList) > 2:
+    
         mean = np.mean(lonLatList, axis=0)
         cov = np.cov(lonLatList, rowvar=0)
         mvNorm = st.multivariate_normal(mean, cov=cov)
 
         S3width, S3height, S3rotation = cov_ellipse(cov, nsig=3)
-        ax.add_patch(Ellipse(mean, S3width, S3height, transform=ccrs.Geodetic(),
-                             angle=S3rotation, facecolor='White', edgecolor='red', label='3 sigma interval'))
+        ax.add_patch(Ellipse(mean, S3width, S3height, transform=ccrs.Geodetic(), 
+                             angle=S3rotation, facecolor='White', edgecolor='red', label = '3 sigma interval'))
 
         S2width, S2height, S2rotation = cov_ellipse(cov, nsig=2)
-        ax.add_patch(Ellipse(mean, S2width, S2height, transform=ccrs.Geodetic(),
-                             angle=S2rotation, facecolor='White', edgecolor='blue', label='2 sigma interval'))
+        ax.add_patch(Ellipse(mean, S2width, S2height, transform=ccrs.Geodetic(), 
+                             angle=S2rotation, facecolor='White', edgecolor='blue', label = '2 sigma interval'))
 
         S1width, S1height, S1rotation = cov_ellipse(cov, nsig=1)
-        ax.add_patch(Ellipse(mean, S1width, S1height, transform=ccrs.Geodetic(),
-                             angle=S1rotation, facecolor='White', edgecolor='green', label='1 sigma interval'))
+        ax.add_patch(Ellipse(mean, S1width, S1height, transform=ccrs.Geodetic(), 
+                             angle=S1rotation, facecolor='White', edgecolor='green', label = '1 sigma interval'))
 
-        ax.plot([lon_min, lon_max], [lat_min, lat_min], transform=ccrs.PlateCarree(), color='pink')
-        ax.plot([lon_min, lon_max], [lat_max, lat_max], transform=ccrs.PlateCarree(), color='pink')
-        ax.plot([lon_max, lon_max], [lat_min, lat_max], transform=ccrs.PlateCarree(), color='pink')
-        ax.plot([lon_min, lon_min], [lat_min, lat_max], transform=ccrs.PlateCarree(), color='pink',
-                label='Bounding Box')
+        ax.plot([lon_min, lon_max], [lat_min, lat_min], transform=ccrs.PlateCarree(), color = 'pink')
+        ax.plot([lon_min, lon_max], [lat_max, lat_max], transform=ccrs.PlateCarree(), color = 'pink')
+        ax.plot([lon_max, lon_max], [lat_min, lat_max], transform=ccrs.PlateCarree(), color = 'pink')
+        ax.plot([lon_min, lon_min], [lat_min, lat_max], transform=ccrs.PlateCarree(), color = 'pink', label = 'Bounding Box')
+        
+        first_legend = ax.legend(loc='upper right')
+        ax.add_artist(first_legend)
 
-        ax.legend()
-
-        ax.plot(*mean, '+', transform=ccrs.PlateCarree(), color='black')
-
+        
+        legend_patches = []
+        for status in STATUS_COLORS:
+            temp_patch = mpatches.Patch(color=STATUS_COLORS[status], label=status)
+            legend_patches.append(temp_patch)
+        
+            
+        ax.legend(handles=legend_patches, loc='lower right')
+        
+        
+        ax.plot(*mean, '+', transform=ccrs.PlateCarree(), color = 'black')
+    
     ax.set_title(f'Position of systems {tMinus} hours before entering the bounding box')
-
-    plt.figtext(0.5, 0.08,
-                f'Mean Velocity of all storms plotted is {np.round(np.mean(v_plot) * KM_TO_MILES, 2)} miles/hr\nwith a standard deviation of {np.round(np.std(v_plot) * KM_TO_MILES, 2)} miles/hr',
+    
+    plt.figtext(0.5, 0.05, f'Mean Velocity of all storms plotted is {np.round(np.mean(v_plot) * KM_TO_MILES, 2)} miles/hr\nwith a standard deviation of {np.round(np.std(v_plot) * KM_TO_MILES, 2)} miles/hr',
                 wrap=True, horizontalalignment='center', fontsize=12)
 
     print(f'{len(lonLatList)} storms plotted')
-
+    
     if saveFig is not None:
         plt.savefig(saveFig)
-
+    
     plt.show()
+    
+def overall_plot(hurdat, t_minus_range, stormType, save_path, batch_name, lon_min=-180, lon_max=180, lat_min=-90, lat_max=90, 
+                 storm_alpha=0.5, bounds = None):
+    if stormType == 'all':
+        stormType = ['TD', 'HU1', 'HU2', 'HU3', 'HU4', 'HU5', 'HUU', 'TS+', 'TS-', 'SS', 'EX']
+    if stormType == 'hurricanes':
+        stormType = ['HU1', 'HU2', 'HU3', 'HU4', 'HU5', 'HUU']
+    if stormType == 'tropical storms':
+        stormType = ['TS+', 'TS-']
+    
+    
+    for t_minus in t_minus_range:
+        plotTMinusPosition(hurdat, t_minus, stormType, lon_min, lon_max, lat_min, lat_max, 
+                           storm_alpha, bounds, saveFig = f'{save_path}/{batch_name}-{t_minus}')
